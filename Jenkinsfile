@@ -9,7 +9,9 @@ pipeline {
     }
     environment{
         def appVersion = '' //variable declaration
-        def nexusUrl = '107.23.30.219:8081' //need to change everytime
+        nexusUrl = 'nexus.daws78s.online:8081'
+        region = "us-east-1"
+        account_id = "315069654700"
     }
     stages {
         stage('read the version'){
@@ -21,6 +23,7 @@ pipeline {
                 }
             }
         }
+        
         stage('Build'){
             steps{
                 sh """
@@ -29,7 +32,32 @@ pipeline {
                 """
             }
         }
-        stage('Nexus Artifact Upload'){
+
+        stage('Docker build'){
+            steps{
+                sh """
+                    aws ecr get-login-password --region ${region} | docker login --username AWS --password-stdin ${account_id}.dkr.ecr.${region}.amazonaws.com
+
+                    docker build -t ${account_id}.dkr.ecr.${region}.amazonaws.com/expense-frontend:${appVersion} .
+
+                    docker push ${account_id}.dkr.ecr.${region}.amazonaws.com/expense-frontend:${appVersion}
+                """
+            }
+        }
+
+        stage('Deploy'){
+            steps{
+                sh """
+                    aws eks update-kubeconfig --region us-east-1 --name expense-dev
+                    cd helm
+                    sed -i 's/IMAGE_VERSION/${appVersion}/g' values.yaml
+                    helm upgrade frontend .
+                """
+            }
+        }
+
+
+        /* stage('Nexus Artifact Upload'){
             steps{
                 script{
                     nexusArtifactUploader(
@@ -52,14 +80,14 @@ pipeline {
         }
         stage('Deploy'){
             steps{
-                script{ //this will trigger frontend-deploy downstream job and send appversion to it
+                script{
                     def params = [
-                        string(name: 'appVersion', value: "${appVersion}") //param name should be same for both the jobs
+                        string(name: 'appVersion', value: "${appVersion}")
                     ]
-                    build job: 'frontend-deploy', parameters: params, wait: false //pssing the params and sending appversion to frontend-deploy job 
+                    build job: 'frontend-deploy', parameters: params, wait: false
                 }
             }
-        }
+        } */
     }
     post { 
         always { 
